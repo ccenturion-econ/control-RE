@@ -311,10 +311,6 @@ def make_month_rows(
         else max(last_actual_day + timedelta(days=1), as_of)
     )
 
-    if incomplete_plannable:
-        first_incomplete = actual_by_date[incomplete_plannable[0]]
-        planned_entry = first_incomplete.entry or planned_entry
-
     planned = (
         distribute_planned_days(
             actual_days,

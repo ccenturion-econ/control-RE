@@ -14,7 +14,7 @@ Entrar a la seccion Releases del repositorio y descargar la version correspondie
 1. Abrir la aplicacion.
 2. Seleccionar el PDF de asistencia.
 3. Elegir donde guardar el Excel.
-4. Revisar o ajustar los parametros.
+4. Revisar o ajustar los parametros visibles.
 5. Presionar `Generar Excel`.
 
 ## Parametros principales
@@ -22,8 +22,15 @@ Entrar a la seccion Releases del repositorio y descargar la version correspondie
 - Hora oficial de entrada: hora desde la cual empieza a contar la jornada. Los minutos marcados antes de esta hora no suman para horas extra.
 - Llegada tarde desde: primer minuto que cuenta como llegada tarde.
 - Salida anticipada antes de: hora antes de la cual se registra uso de cupo por salida anticipada.
-- Horas regulares: horas que deben cumplirse antes de empezar a contar horas extra.
-- Topes diario, semanal y mensual.
+- Entrada planificada: hora de entrada que se usa para proyectar dias futuros en meses parciales.
+
+Los siguientes valores son fijos en la aplicacion y se muestran en el Excel generado:
+
+- Horas regulares: 8.
+- Tope diario: 3 horas.
+- Tope semanal: 8 horas.
+- Tope mensual: 25 horas.
+- Usos de cupo permitidos: 3.
 
 ## Reglas incluidas
 
