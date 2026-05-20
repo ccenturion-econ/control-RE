@@ -38,6 +38,7 @@ class HorasExtraApp(tk.Tk):
         self.no_plan = tk.BooleanVar(value=False)
         self.status = tk.StringVar(value="Seleccione un PDF para comenzar.")
 
+        self.monthly_cap = tk.StringVar(value="25")
         self.official_entry = tk.StringVar(value="08:00:00")
         self.late_starts_at = tk.StringVar(value="08:16:00")
         self.early_exit_before = tk.StringVar(value="16:00:00")
@@ -72,7 +73,7 @@ class HorasExtraApp(tk.Tk):
         ttk.Checkbutton(options, text="No planificar días futuros", variable=self.no_plan).grid(
             row=0, column=2, columnspan=2, sticky="w", padx=8, pady=5
         )
-        self._field(options, "Tope mensual", tk.StringVar(value=f"{self.MONTHLY_CAP:g}"), 1, 0, state="readonly")
+        self._field(options, "Tope mensual", self.monthly_cap, 1, 0)
         self._field(options, "Hora oficial de entrada", self.official_entry, 1, 2)
         self._field(options, "Llegada tarde desde", self.late_starts_at, 2, 0)
         self._field(options, "Salida anticipada antes de", self.early_exit_before, 2, 2)
@@ -162,7 +163,7 @@ class HorasExtraApp(tk.Tk):
             regular_hours=self.REGULAR_HOURS,
             daily_cap=self.DAILY_CAP,
             weekly_cap=self.WEEKLY_CAP,
-            monthly_cap=self.MONTHLY_CAP,
+            monthly_cap=float(self.monthly_cap.get()),
             late_starts_at=parse_time(self.late_starts_at.get()),
             early_exit_before=parse_time(self.early_exit_before.get()),
             allowed_rule_events=self.RULE_EVENTS_ALLOWED,
@@ -170,7 +171,7 @@ class HorasExtraApp(tk.Tk):
         write_workbook(
             rows=rows,
             output_path=output,
-            monthly_cap=self.MONTHLY_CAP,
+            monthly_cap=float(self.monthly_cap.get()),
             regular_hours=self.REGULAR_HOURS,
             weekly_cap=self.WEEKLY_CAP,
             daily_cap=self.DAILY_CAP,
