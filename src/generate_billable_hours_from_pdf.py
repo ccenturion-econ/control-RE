@@ -88,12 +88,18 @@ def monday_of(day: date) -> date:
     return day - timedelta(days=day.weekday())
 
 
-def decimal_hours(start: time | None, end: time | None) -> float:
+def decimal_hours(
+    start: time | None,
+    end: time | None,
+    official_entry: time,
+) -> float:
     if start is None or end is None:
         return 0.0
     start_minute = start.replace(second=0, microsecond=0)
     end_minute = end.replace(second=0, microsecond=0)
-    start_dt = datetime.combine(date(2000, 1, 1), start_minute)
+    official_entry_minute = official_entry.replace(second=0, microsecond=0)
+    effective_start = max(start_minute, official_entry_minute)
+    start_dt = datetime.combine(date(2000, 1, 1), effective_start)
     end_dt = datetime.combine(date(2000, 1, 1), end_minute)
     if end_dt < start_dt:
         end_dt += timedelta(days=1)
@@ -103,10 +109,11 @@ def decimal_hours(start: time | None, end: time | None) -> float:
 def raw_daily_billable(
     start: time | None,
     end: time | None,
+    official_entry: time,
     regular_hours: float,
     daily_cap: float,
 ) -> float:
-    return min(daily_cap, max(0.0, decimal_hours(start, end) - regular_hours))
+    return min(daily_cap, max(0.0, decimal_hours(start, end, official_entry) - regular_hours))
 
 
 def extract_records(pdf_path: Path) -> list[tuple[datetime, str]]:
@@ -164,6 +171,7 @@ def compute_billable_for_known_days(
     daily_cap: float,
     weekly_cap: float,
     monthly_cap: float,
+    official_entry: time,
     late_starts_at: time,
     early_exit_before: time,
     allowed_rule_events: int,
@@ -188,7 +196,7 @@ def compute_billable_for_known_days(
 
         eligible = late_event == 0 or late_total <= allowed_rule_events
         after_rule = (
-            raw_daily_billable(row.entry, row.exit, regular_hours, daily_cap)
+            raw_daily_billable(row.entry, row.exit, official_entry, regular_hours, daily_cap)
             if eligible
             else 0.0
         )
@@ -209,6 +217,7 @@ def distribute_planned_days(
     plan_from: date,
     as_of: date,
     planned_entry: time,
+    official_entry: time,
     regular_hours: float,
     daily_cap: float,
     weekly_cap: float,
@@ -223,6 +232,7 @@ def distribute_planned_days(
         daily_cap,
         weekly_cap,
         monthly_cap,
+        official_entry,
         late_starts_at,
         early_exit_before,
         allowed_rule_events,
@@ -264,7 +274,8 @@ def distribute_planned_days(
             if idx == len(week_days) - 1:
                 target = week_target - per_day * (len(week_days) - 1)
             target = min(daily_cap, max(0.0, target))
-            out_time = time_from_hours(planned_entry, regular_hours + target)
+            effective_planned_entry = max(planned_entry, official_entry)
+            out_time = time_from_hours(effective_planned_entry, regular_hours + target)
             note = "Planificado para llegar al tope mensual"
             planned[day] = AttendanceDay(day, planned_entry, out_time, "Planificado", note)
         remaining -= week_target
@@ -281,6 +292,7 @@ def make_month_rows(
     as_of: date,
     plan_remaining: bool,
     planned_entry: time,
+    official_entry: time,
     regular_hours: float,
     daily_cap: float,
     weekly_cap: float,
@@ -311,6 +323,7 @@ def make_month_rows(
             plan_from,
             as_of,
             planned_entry,
+            official_entry,
             regular_hours,
             daily_cap,
             weekly_cap,
@@ -349,6 +362,7 @@ def write_workbook(
     regular_hours: float,
     weekly_cap: float,
     daily_cap: float,
+    official_entry: time,
     late_starts_at: time,
     early_exit_before: time,
     allowed_rule_events: int,
@@ -379,6 +393,7 @@ def write_workbook(
         ("Horas regulares antes de horas extra", regular_hours / 24),
         ("Tope semanal", weekly_cap / 24),
         ("Tope diario", daily_cap / 24),
+        ("Hora oficial de entrada", official_entry),
         ("Llegada tarde desde", late_starts_at),
         ("Salida anticipada antes de", early_exit_before),
         ("Usos de cupo permitidos", allowed_rule_events),
@@ -393,16 +408,22 @@ def write_workbook(
         ws[cell].number_format = "[h]:mm:ss"
     ws["B7"].number_format = "hh:mm:ss"
     ws["B8"].number_format = "hh:mm:ss"
-    ws["B9"].number_format = "0"
+    ws["B9"].number_format = "hh:mm:ss"
+    ws["B10"].number_format = "0"
+
+    header_row = 12
+    first_data_row = header_row + 1
+    last_data_row = header_row + len(rows)
+    previous_row = header_row
 
     metrics = [
-        ("Total horas extra", "=SUM(Q11:Q41)"),
-        ("Horas extra reales", '=SUMIFS(Q11:Q41,D11:D41,"Real")'),
-        ("Horas extra planificadas", '=SUMIFS(Q11:Q41,D11:D41,"Planificado")'),
+        ("Total horas extra", f"=SUM(Q{first_data_row}:Q{last_data_row})"),
+        ("Horas extra reales", f'=SUMIFS(Q{first_data_row}:Q{last_data_row},D{first_data_row}:D{last_data_row},"Real")'),
+        ("Horas extra planificadas", f'=SUMIFS(Q{first_data_row}:Q{last_data_row},D{first_data_row}:D{last_data_row},"Planificado")'),
         ("Restante al tope mensual", "=MAX(0,$B$3-E3)"),
-        ("Usos de cupo registrados", "=SUM(K11:K41)"),
-        ("Usos de cupo restantes", "=MAX(0,$B$9-E7)"),
-        ("Llegadas tarde registradas", '=COUNTIF(I11:I41,"Sí")'),
+        ("Usos de cupo registrados", f"=SUM(K{first_data_row}:K{last_data_row})"),
+        ("Usos de cupo restantes", "=MAX(0,$B$10-E7)"),
+        ("Llegadas tarde registradas", f'=COUNTIF(I{first_data_row}:I{last_data_row},"Sí")'),
     ]
     for idx, (label, formula) in enumerate(metrics, start=3):
         ws.cell(idx, 4, label)
@@ -435,59 +456,59 @@ def write_workbook(
         "Notas",
     ]
     for col, header in enumerate(headers, start=1):
-        cell = ws.cell(10, col, header)
+        cell = ws.cell(header_row, col, header)
         cell.fill = header_fill
         cell.font = white_font
         cell.alignment = Alignment(horizontal="center", vertical="center", wrap_text=True)
 
     day_names = ["Lun", "Mar", "Mie", "Jue", "Vie", "Sab", "Dom"]
-    for offset, row in enumerate(rows, start=11):
+    for offset, row in enumerate(rows, start=first_data_row):
         ws.cell(offset, 1, row.day)
         ws.cell(offset, 2, monday_of(row.day))
         ws.cell(offset, 3, day_names[row.day.weekday()])
         ws.cell(offset, 4, row.status)
         ws.cell(offset, 5, row.entry)
         ws.cell(offset, 6, row.exit)
-        ws.cell(offset, 7, f'=IF(OR(E{offset}="",F{offset}=""),0,MOD(FLOOR(F{offset}*1440,1)-FLOOR(E{offset}*1440,1),1440)/1440)')
+        ws.cell(offset, 7, f'=IF(OR(E{offset}="",F{offset}=""),0,MOD(FLOOR(F{offset}*1440,1)-MAX(FLOOR(E{offset}*1440,1),FLOOR($B$7*1440,1)),1440)/1440)')
         ws.cell(offset, 8, f"=MIN($B$6,MAX(0,G{offset}-$B$4))")
-        ws.cell(offset, 9, f'=IF(AND(E{offset}<>"",E{offset}>=$B$7),"Sí","No")')
-        ws.cell(offset, 10, f'=IF(AND(F{offset}<>"",F{offset}<$B$8),"Sí","No")')
+        ws.cell(offset, 9, f'=IF(AND(E{offset}<>"",E{offset}>=$B$8),"Sí","No")')
+        ws.cell(offset, 10, f'=IF(AND(F{offset}<>"",F{offset}<$B$9),"Sí","No")')
         ws.cell(offset, 11, f'=IF(I{offset}="Sí",1,0)+IF(J{offset}="Sí",1,0)')
-        ws.cell(offset, 12, f"=SUM($K$11:K{offset})")
-        ws.cell(offset, 13, f'=COUNTIF($I$11:I{offset},"Sí")')
-        ws.cell(offset, 14, f'=IF(OR(I{offset}<>"Sí",M{offset}<=$B$9),"Sí","No")')
+        ws.cell(offset, 12, f"=SUM($K${first_data_row}:K{offset})")
+        ws.cell(offset, 13, f'=COUNTIF($I${first_data_row}:I{offset},"Sí")')
+        ws.cell(offset, 14, f'=IF(OR(I{offset}<>"Sí",M{offset}<=$B$10),"Sí","No")')
         ws.cell(offset, 15, f'=IF(N{offset}="Sí",H{offset},0)')
         ws.cell(
             offset,
             16,
-            f"=MIN(O{offset},MAX(0,$B$5-SUMIFS($P$10:P{offset - 1},$B$10:B{offset - 1},B{offset})))",
+            f"=MIN(O{offset},MAX(0,$B$5-SUMIFS($P${previous_row}:P{offset - 1},$B${previous_row}:B{offset - 1},B{offset})))",
         )
-        ws.cell(offset, 17, f"=MIN(P{offset},MAX(0,$B$3-SUM($Q$10:Q{offset - 1})))")
-        ws.cell(offset, 18, f"=SUM($Q$11:Q{offset})")
+        ws.cell(offset, 17, f"=MIN(P{offset},MAX(0,$B$3-SUM($Q${previous_row}:Q{offset - 1})))")
+        ws.cell(offset, 18, f"=SUM($Q${first_data_row}:Q{offset})")
         ws.cell(offset, 19, f"=MAX(0,$B$3-R{offset})")
         ws.cell(offset, 20, row.notes)
 
-    for row in ws.iter_rows(min_row=10, max_row=10 + len(rows), min_col=1, max_col=20):
+    for row in ws.iter_rows(min_row=header_row, max_row=last_data_row, min_col=1, max_col=20):
         for cell in row:
             cell.border = border
             cell.alignment = Alignment(vertical="center", wrap_text=True)
     for col in (1, 2):
-        for cell in ws.iter_cols(min_col=col, max_col=col, min_row=11, max_row=10 + len(rows)):
+        for cell in ws.iter_cols(min_col=col, max_col=col, min_row=first_data_row, max_row=last_data_row):
             for item in cell:
                 item.number_format = "mmm d, yyyy"
     for col in (5, 6):
-        for cell in ws.iter_cols(min_col=col, max_col=col, min_row=11, max_row=10 + len(rows)):
+        for cell in ws.iter_cols(min_col=col, max_col=col, min_row=first_data_row, max_row=last_data_row):
             for item in cell:
                 item.number_format = "hh:mm:ss"
     for col in (7, 8, 15, 16, 17, 18, 19):
-        for cell in ws.iter_cols(min_col=col, max_col=col, min_row=11, max_row=10 + len(rows)):
+        for cell in ws.iter_cols(min_col=col, max_col=col, min_row=first_data_row, max_row=last_data_row):
             for item in cell:
                 item.number_format = "[h]:mm:ss"
     for col in (11, 12, 13):
-        for cell in ws.iter_cols(min_col=col, max_col=col, min_row=11, max_row=10 + len(rows)):
+        for cell in ws.iter_cols(min_col=col, max_col=col, min_row=first_data_row, max_row=last_data_row):
             for item in cell:
                 item.number_format = "0"
-    for cell in ws[10 + len(rows)]:
+    for cell in ws[last_data_row]:
         cell.fill = total_fill
 
     widths = {
@@ -514,7 +535,7 @@ def write_workbook(
     }
     for col, width in widths.items():
         ws.column_dimensions[col].width = width
-    ws.freeze_panes = "A11"
+    ws.freeze_panes = f"A{first_data_row}"
 
     summary.merge_cells("A1:G1")
     summary["A1"] = "Resumen semanal de horas extra"
@@ -538,8 +559,8 @@ def write_workbook(
     weeks = sorted({monday_of(row.day) for row in rows})
     for idx, week in enumerate(weeks, start=4):
         summary.cell(idx, 1, week)
-        summary.cell(idx, 2, f'=SUMIFS(\'{ws.title}\'!$Q$11:$Q$41,\'{ws.title}\'!$B$11:$B$41,A{idx},\'{ws.title}\'!$D$11:$D$41,"Real")')
-        summary.cell(idx, 3, f'=SUMIFS(\'{ws.title}\'!$Q$11:$Q$41,\'{ws.title}\'!$B$11:$B$41,A{idx},\'{ws.title}\'!$D$11:$D$41,"Planificado")')
+        summary.cell(idx, 2, f'=SUMIFS(\'{ws.title}\'!$Q${first_data_row}:$Q${last_data_row},\'{ws.title}\'!$B${first_data_row}:$B${last_data_row},A{idx},\'{ws.title}\'!$D${first_data_row}:$D${last_data_row},"Real")')
+        summary.cell(idx, 3, f'=SUMIFS(\'{ws.title}\'!$Q${first_data_row}:$Q${last_data_row},\'{ws.title}\'!$B${first_data_row}:$B${last_data_row},A{idx},\'{ws.title}\'!$D${first_data_row}:$D${last_data_row},"Planificado")')
         summary.cell(idx, 4, f"=SUM(B{idx}:C{idx})")
         summary.cell(idx, 5, f"='{ws.title}'!$B$5")
         summary.cell(idx, 6, f"=MAX(0,E{idx}-D{idx})")
@@ -575,6 +596,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--weekly-cap", type=float, default=8.0)
     parser.add_argument("--daily-cap", type=float, default=3.0)
     parser.add_argument("--regular-hours", type=float, default=8.0)
+    parser.add_argument("--official-entry", default="08:00:00")
     parser.add_argument("--late-starts-at", default="08:16:00")
     parser.add_argument("--early-exit-before", default="16:00:00")
     parser.add_argument("--rule-events-allowed", type=int, default=3)
@@ -606,6 +628,7 @@ def main() -> None:
         as_of=args.as_of,
         plan_remaining=not args.no_plan,
         planned_entry=parse_time(args.planned_entry),
+        official_entry=parse_time(args.official_entry),
         regular_hours=args.regular_hours,
         daily_cap=args.daily_cap,
         weekly_cap=args.weekly_cap,
@@ -624,6 +647,7 @@ def main() -> None:
         regular_hours=args.regular_hours,
         weekly_cap=args.weekly_cap,
         daily_cap=args.daily_cap,
+        official_entry=parse_time(args.official_entry),
         late_starts_at=parse_time(args.late_starts_at),
         early_exit_before=parse_time(args.early_exit_before),
         allowed_rule_events=args.rule_events_allowed,

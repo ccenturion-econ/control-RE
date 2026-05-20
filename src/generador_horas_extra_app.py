@@ -36,6 +36,7 @@ class HorasExtraApp(tk.Tk):
         self.weekly_cap = tk.StringVar(value="8")
         self.daily_cap = tk.StringVar(value="3")
         self.regular_hours = tk.StringVar(value="8")
+        self.official_entry = tk.StringVar(value="08:00:00")
         self.late_starts_at = tk.StringVar(value="08:16:00")
         self.early_exit_before = tk.StringVar(value="16:00:00")
         self.rule_events_allowed = tk.StringVar(value="3")
@@ -74,13 +75,14 @@ class HorasExtraApp(tk.Tk):
         self._field(options, "Tope semanal", self.weekly_cap, 1, 2)
         self._field(options, "Tope diario", self.daily_cap, 2, 0)
         self._field(options, "Horas regulares", self.regular_hours, 2, 2)
-        self._field(options, "Llegada tarde desde", self.late_starts_at, 3, 0)
-        self._field(options, "Salida anticipada antes de", self.early_exit_before, 3, 2)
-        self._field(options, "Usos de cupo", self.rule_events_allowed, 4, 0)
-        self._field(options, "Entrada planificada", self.planned_entry, 4, 2)
+        self._field(options, "Hora oficial de entrada", self.official_entry, 3, 0)
+        self._field(options, "Llegada tarde desde", self.late_starts_at, 3, 2)
+        self._field(options, "Salida anticipada antes de", self.early_exit_before, 4, 0)
+        self._field(options, "Usos de cupo", self.rule_events_allowed, 4, 2)
+        self._field(options, "Entrada planificada", self.planned_entry, 5, 0)
 
         buttons = ttk.Frame(outer)
-        buttons.grid(row=4, column=0, columnspan=3, sticky="ew", pady=(10, 8))
+        buttons.grid(row=4, column=0, columnspan=3, sticky="ew", pady=(14, 8))
         buttons.columnconfigure(0, weight=1)
         self.generate_button = ttk.Button(buttons, text="Generar Excel", command=self.generate)
         self.generate_button.grid(row=0, column=1, sticky="e")
@@ -158,6 +160,7 @@ class HorasExtraApp(tk.Tk):
             as_of=parse_date(self.as_of.get()),
             plan_remaining=not self.no_plan.get(),
             planned_entry=parse_time(self.planned_entry.get()),
+            official_entry=parse_time(self.official_entry.get()),
             regular_hours=float(self.regular_hours.get()),
             daily_cap=float(self.daily_cap.get()),
             weekly_cap=float(self.weekly_cap.get()),
@@ -173,6 +176,7 @@ class HorasExtraApp(tk.Tk):
             regular_hours=float(self.regular_hours.get()),
             weekly_cap=float(self.weekly_cap.get()),
             daily_cap=float(self.daily_cap.get()),
+            official_entry=parse_time(self.official_entry.get()),
             late_starts_at=parse_time(self.late_starts_at.get()),
             early_exit_before=parse_time(self.early_exit_before.get()),
             allowed_rule_events=int(self.rule_events_allowed.get()),
