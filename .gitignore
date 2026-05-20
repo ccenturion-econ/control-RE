@@ -1,0 +1,10 @@
+__pycache__/
+*.pyc
+.DS_Store
+build/
+dist/
+*.spec
+*.xlsx
+*.pdf
+outputs/
+release/
