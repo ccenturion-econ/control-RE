@@ -73,6 +73,41 @@ def parse_date(value: str) -> date:
     return datetime.strptime(value, "%Y-%m-%d").date()
 
 
+def parse_rain_dates(value: str) -> set[date]:
+    """Convierte una lista separada por comas en fechas de lluvia."""
+    rain_dates: set[date] = set()
+    invalid: list[str] = []
+    for raw_value in value.split(","):
+        item = raw_value.strip()
+        if not item:
+            continue
+        parsed = None
+        for date_format in ("%Y-%m-%d", "%d/%m/%Y"):
+            try:
+                parsed = datetime.strptime(item, date_format).date()
+                break
+            except ValueError:
+                continue
+        if parsed is None:
+            invalid.append(item)
+        else:
+            rain_dates.add(parsed)
+    if invalid:
+        raise ValueError(
+            "Fechas de lluvia inválidas: "
+            + ", ".join(invalid)
+            + ". Use YYYY-MM-DD o DD/MM/YYYY, separadas por comas."
+        )
+    return rain_dates
+
+
+def late_threshold(day: date, late_starts_at: time, rain_dates: set[date]) -> time:
+    """Devuelve el inicio de tardanza, sumando 30 minutos en días de lluvia."""
+    if day not in rain_dates:
+        return late_starts_at
+    return (datetime.combine(day, late_starts_at) + timedelta(minutes=30)).time()
+
+
 def excel_time(value: time | None) -> float | None:
     if value is None:
         return None
@@ -175,7 +210,9 @@ def compute_billable_for_known_days(
     late_starts_at: time,
     early_exit_before: time,
     allowed_rule_events: int,
+    rain_dates: set[date] | None = None,
 ) -> tuple[dict[date, float], dict[date, int]]:
+    rain_dates = rain_dates or set()
     weekly_totals: dict[date, float] = defaultdict(float)
     monthly_total = 0.0
     late_total = 0
@@ -188,7 +225,7 @@ def compute_billable_for_known_days(
             event_counts[row.day] = 0
             continue
 
-        late_event = int(row.entry >= late_starts_at)
+        late_event = int(row.entry >= late_threshold(row.day, late_starts_at, rain_dates))
         early_exit_event = int(row.exit < early_exit_before)
         events = late_event + early_exit_event
         late_total += late_event
@@ -225,6 +262,7 @@ def distribute_planned_days(
     late_starts_at: time,
     early_exit_before: time,
     allowed_rule_events: int,
+    rain_dates: set[date] | None = None,
 ) -> dict[date, AttendanceDay]:
     known_billable, _ = compute_billable_for_known_days(
         [day for day in actual_days if day.exit is not None],
@@ -236,6 +274,7 @@ def distribute_planned_days(
         late_starts_at,
         early_exit_before,
         allowed_rule_events,
+        rain_dates,
     )
     actual_total = sum(known_billable.values())
     remaining_month = max(0.0, monthly_cap - actual_total)
@@ -300,6 +339,7 @@ def make_month_rows(
     late_starts_at: time,
     early_exit_before: time,
     allowed_rule_events: int,
+    rain_dates: set[date] | None = None,
 ) -> list[AttendanceDay]:
     actual_by_date = {row.day: row for row in actual_days}
     incomplete_days = [row.day for row in actual_days if row.exit is None and row.entry]
@@ -327,6 +367,7 @@ def make_month_rows(
             late_starts_at,
             early_exit_before,
             allowed_rule_events,
+            rain_dates,
         )
         if plan_remaining
         else {}
@@ -362,7 +403,9 @@ def write_workbook(
     late_starts_at: time,
     early_exit_before: time,
     allowed_rule_events: int,
+    rain_dates: set[date] | None = None,
 ) -> None:
+    rain_dates = rain_dates or set()
     wb = Workbook()
     ws = wb.active
     month_name = SPANISH_MONTHS[rows[0].day.month]
@@ -378,7 +421,7 @@ def write_workbook(
     title_font = Font(color="17324D", bold=True, size=16)
     border = Border(bottom=Side(style="thin", color="CAD3DD"))
 
-    ws.merge_cells("A1:T1")
+    ws.merge_cells("A1:U1")
     ws["A1"] = f"Horas extra - {month_name} {rows[0].day.year}"
     ws["A1"].font = title_font
     ws["A1"].fill = title_fill
@@ -393,6 +436,7 @@ def write_workbook(
         ("Llegada tarde desde", late_starts_at),
         ("Salida anticipada antes de", early_exit_before),
         ("Usos de cupo permitidos", allowed_rule_events),
+        ("Tolerancia adicional por lluvia", timedelta(minutes=30)),
     ]
     for idx, (label, value) in enumerate(assumptions, start=3):
         ws.cell(idx, 1, label)
@@ -406,20 +450,21 @@ def write_workbook(
     ws["B8"].number_format = "hh:mm:ss"
     ws["B9"].number_format = "hh:mm:ss"
     ws["B10"].number_format = "0"
+    ws["B11"].number_format = "[h]:mm:ss"
 
-    header_row = 12
+    header_row = 13
     first_data_row = header_row + 1
     last_data_row = header_row + len(rows)
     previous_row = header_row
 
     metrics = [
-        ("Total horas extra", f"=SUM(Q{first_data_row}:Q{last_data_row})"),
-        ("Horas extra reales", f'=SUMIFS(Q{first_data_row}:Q{last_data_row},D{first_data_row}:D{last_data_row},"Real")'),
-        ("Horas extra planificadas", f'=SUMIFS(Q{first_data_row}:Q{last_data_row},D{first_data_row}:D{last_data_row},"Planificado")'),
+        ("Total horas extra", f"=SUM(R{first_data_row}:R{last_data_row})"),
+        ("Horas extra reales", f'=SUMIFS(R{first_data_row}:R{last_data_row},D{first_data_row}:D{last_data_row},"Real")'),
+        ("Horas extra planificadas", f'=SUMIFS(R{first_data_row}:R{last_data_row},D{first_data_row}:D{last_data_row},"Planificado")'),
         ("Restante al tope mensual", "=MAX(0,$B$3-E3)"),
-        ("Usos de cupo registrados", f"=SUM(K{first_data_row}:K{last_data_row})"),
+        ("Usos de cupo registrados", f"=SUM(L{first_data_row}:L{last_data_row})"),
         ("Usos de cupo restantes", "=MAX(0,$B$10-E7)"),
-        ("Llegadas tarde registradas", f'=COUNTIF(I{first_data_row}:I{last_data_row},"Sí")'),
+        ("Llegadas tarde registradas", f'=COUNTIF(J{first_data_row}:J{last_data_row},"Sí")'),
     ]
     for idx, (label, formula) in enumerate(metrics, start=3):
         ws.cell(idx, 4, label)
@@ -438,6 +483,7 @@ def write_workbook(
         "Hora de salida",
         "Horas trabajadas",
         "Horas extra brutas",
+        "¿Día de lluvia?",
         "¿Llegada tarde?",
         "¿Salida anticipada?",
         "Uso de cupo",
@@ -467,24 +513,25 @@ def write_workbook(
         ws.cell(offset, 6, row.exit)
         ws.cell(offset, 7, f'=IF(OR(E{offset}="",F{offset}=""),0,MOD(FLOOR(F{offset}*1440,1)-MAX(FLOOR(E{offset}*1440,1),FLOOR($B$7*1440,1)),1440)/1440)')
         ws.cell(offset, 8, f"=MIN($B$6,MAX(0,G{offset}-$B$4))")
-        ws.cell(offset, 9, f'=IF(AND(E{offset}<>"",E{offset}>=$B$8),"Sí","No")')
-        ws.cell(offset, 10, f'=IF(AND(F{offset}<>"",F{offset}<$B$9),"Sí","No")')
-        ws.cell(offset, 11, f'=IF(I{offset}="Sí",1,0)+IF(J{offset}="Sí",1,0)')
-        ws.cell(offset, 12, f"=SUM($K${first_data_row}:K{offset})")
-        ws.cell(offset, 13, f'=COUNTIF($I${first_data_row}:I{offset},"Sí")')
-        ws.cell(offset, 14, f'=IF(OR(I{offset}<>"Sí",M{offset}<=$B$10),"Sí","No")')
-        ws.cell(offset, 15, f'=IF(N{offset}="Sí",H{offset},0)')
+        ws.cell(offset, 9, "Sí" if row.day in rain_dates else "No")
+        ws.cell(offset, 10, f'=IF(AND(E{offset}<>"",E{offset}>=$B$8+IF(I{offset}="Sí",$B$11,0)),"Sí","No")')
+        ws.cell(offset, 11, f'=IF(AND(F{offset}<>"",F{offset}<$B$9),"Sí","No")')
+        ws.cell(offset, 12, f'=IF(J{offset}="Sí",1,0)+IF(K{offset}="Sí",1,0)')
+        ws.cell(offset, 13, f"=SUM($L${first_data_row}:L{offset})")
+        ws.cell(offset, 14, f'=COUNTIF($J${first_data_row}:J{offset},"Sí")')
+        ws.cell(offset, 15, f'=IF(OR(J{offset}<>"Sí",N{offset}<=$B$10),"Sí","No")')
+        ws.cell(offset, 16, f'=IF(O{offset}="Sí",H{offset},0)')
         ws.cell(
             offset,
-            16,
-            f"=MIN(O{offset},MAX(0,$B$5-SUMIFS($P${previous_row}:P{offset - 1},$B${previous_row}:B{offset - 1},B{offset})))",
+            17,
+            f"=MIN(P{offset},MAX(0,$B$5-SUMIFS($Q${previous_row}:Q{offset - 1},$B${previous_row}:B{offset - 1},B{offset})))",
         )
-        ws.cell(offset, 17, f"=MIN(P{offset},MAX(0,$B$3-SUM($Q${previous_row}:Q{offset - 1})))")
-        ws.cell(offset, 18, f"=SUM($Q${first_data_row}:Q{offset})")
-        ws.cell(offset, 19, f"=MAX(0,$B$3-R{offset})")
-        ws.cell(offset, 20, row.notes)
+        ws.cell(offset, 18, f"=MIN(Q{offset},MAX(0,$B$3-SUM($R${previous_row}:R{offset - 1})))")
+        ws.cell(offset, 19, f"=SUM($R${first_data_row}:R{offset})")
+        ws.cell(offset, 20, f"=MAX(0,$B$3-S{offset})")
+        ws.cell(offset, 21, row.notes)
 
-    for row in ws.iter_rows(min_row=header_row, max_row=last_data_row, min_col=1, max_col=20):
+    for row in ws.iter_rows(min_row=header_row, max_row=last_data_row, min_col=1, max_col=21):
         for cell in row:
             cell.border = border
             cell.alignment = Alignment(vertical="center", wrap_text=True)
@@ -496,11 +543,11 @@ def write_workbook(
         for cell in ws.iter_cols(min_col=col, max_col=col, min_row=first_data_row, max_row=last_data_row):
             for item in cell:
                 item.number_format = "hh:mm:ss"
-    for col in (7, 8, 15, 16, 17, 18, 19):
+    for col in (7, 8, 16, 17, 18, 19, 20):
         for cell in ws.iter_cols(min_col=col, max_col=col, min_row=first_data_row, max_row=last_data_row):
             for item in cell:
                 item.number_format = "[h]:mm:ss"
-    for col in (11, 12, 13):
+    for col in (12, 13, 14):
         for cell in ws.iter_cols(min_col=col, max_col=col, min_row=first_data_row, max_row=last_data_row):
             for item in cell:
                 item.number_format = "0"
@@ -518,16 +565,17 @@ def write_workbook(
         "H": 14,
         "I": 13,
         "J": 13,
-        "K": 12,
-        "L": 14,
-        "M": 15,
-        "N": 12,
-        "O": 14,
+        "K": 13,
+        "L": 12,
+        "M": 14,
+        "N": 15,
+        "O": 12,
         "P": 14,
         "Q": 14,
-        "R": 13,
+        "R": 14,
         "S": 13,
-        "T": 28,
+        "T": 13,
+        "U": 28,
     }
     for col, width in widths.items():
         ws.column_dimensions[col].width = width
@@ -555,8 +603,8 @@ def write_workbook(
     weeks = sorted({monday_of(row.day) for row in rows})
     for idx, week in enumerate(weeks, start=4):
         summary.cell(idx, 1, week)
-        summary.cell(idx, 2, f'=SUMIFS(\'{ws.title}\'!$Q${first_data_row}:$Q${last_data_row},\'{ws.title}\'!$B${first_data_row}:$B${last_data_row},A{idx},\'{ws.title}\'!$D${first_data_row}:$D${last_data_row},"Real")')
-        summary.cell(idx, 3, f'=SUMIFS(\'{ws.title}\'!$Q${first_data_row}:$Q${last_data_row},\'{ws.title}\'!$B${first_data_row}:$B${last_data_row},A{idx},\'{ws.title}\'!$D${first_data_row}:$D${last_data_row},"Planificado")')
+        summary.cell(idx, 2, f'=SUMIFS(\'{ws.title}\'!$R${first_data_row}:$R${last_data_row},\'{ws.title}\'!$B${first_data_row}:$B${last_data_row},A{idx},\'{ws.title}\'!$D${first_data_row}:$D${last_data_row},"Real")')
+        summary.cell(idx, 3, f'=SUMIFS(\'{ws.title}\'!$R${first_data_row}:$R${last_data_row},\'{ws.title}\'!$B${first_data_row}:$B${last_data_row},A{idx},\'{ws.title}\'!$D${first_data_row}:$D${last_data_row},"Planificado")')
         summary.cell(idx, 4, f"=SUM(B{idx}:C{idx})")
         summary.cell(idx, 5, f"='{ws.title}'!$B$5")
         summary.cell(idx, 6, f"=MAX(0,E{idx}-D{idx})")
@@ -598,6 +646,12 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--rule-events-allowed", type=int, default=3)
     parser.add_argument("--planned-entry", default="08:10:04")
     parser.add_argument(
+        "--rain-dates",
+        type=parse_rain_dates,
+        default=set(),
+        help="Fechas de lluvia separadas por comas (YYYY-MM-DD o DD/MM/YYYY).",
+    )
+    parser.add_argument(
         "--as-of",
         type=parse_date,
         default=date.today(),
@@ -632,6 +686,7 @@ def main() -> None:
         late_starts_at=parse_time(args.late_starts_at),
         early_exit_before=parse_time(args.early_exit_before),
         allowed_rule_events=args.rule_events_allowed,
+        rain_dates=args.rain_dates,
     )
     output = args.output
     if output is None:
@@ -647,6 +702,7 @@ def main() -> None:
         late_starts_at=parse_time(args.late_starts_at),
         early_exit_before=parse_time(args.early_exit_before),
         allowed_rule_events=args.rule_events_allowed,
+        rain_dates=args.rain_dates,
     )
     print(output)
 

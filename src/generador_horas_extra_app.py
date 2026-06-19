@@ -14,6 +14,7 @@ from generate_billable_hours_from_pdf import (
     extract_records,
     make_month_rows,
     parse_date,
+    parse_rain_dates,
     parse_time,
     write_workbook,
 )
@@ -29,8 +30,8 @@ class HorasExtraApp(tk.Tk):
     def __init__(self) -> None:
         super().__init__()
         self.title("Generador de Horas Extra")
-        self.geometry("720x430")
-        self.minsize(680, 400)
+        self.geometry("760x470")
+        self.minsize(700, 430)
 
         self.pdf_path = tk.StringVar()
         self.output_path = tk.StringVar()
@@ -43,6 +44,7 @@ class HorasExtraApp(tk.Tk):
         self.late_starts_at = tk.StringVar(value="08:16:00")
         self.early_exit_before = tk.StringVar(value="16:00:00")
         self.planned_entry = tk.StringVar(value="08:10:04")
+        self.rain_dates = tk.StringVar()
 
         self._build_ui()
 
@@ -78,6 +80,7 @@ class HorasExtraApp(tk.Tk):
         self._field(options, "Llegada tarde desde", self.late_starts_at, 2, 0)
         self._field(options, "Salida anticipada antes de", self.early_exit_before, 2, 2)
         self._field(options, "Entrada planificada", self.planned_entry, 3, 0)
+        self._field(options, "Fechas de lluvia", self.rain_dates, 3, 2)
 
         buttons = ttk.Frame(outer)
         buttons.grid(row=4, column=0, columnspan=3, sticky="ew", pady=(14, 8))
@@ -152,6 +155,7 @@ class HorasExtraApp(tk.Tk):
         year = records[0][0].year
         month = records[0][0].month
         actual_days = build_actual_days(records)
+        rain_dates = parse_rain_dates(self.rain_dates.get())
         rows = make_month_rows(
             actual_days=actual_days,
             year=year,
@@ -167,6 +171,7 @@ class HorasExtraApp(tk.Tk):
             late_starts_at=parse_time(self.late_starts_at.get()),
             early_exit_before=parse_time(self.early_exit_before.get()),
             allowed_rule_events=self.RULE_EVENTS_ALLOWED,
+            rain_dates=rain_dates,
         )
         write_workbook(
             rows=rows,
@@ -179,6 +184,7 @@ class HorasExtraApp(tk.Tk):
             late_starts_at=parse_time(self.late_starts_at.get()),
             early_exit_before=parse_time(self.early_exit_before.get()),
             allowed_rule_events=self.RULE_EVENTS_ALLOWED,
+            rain_dates=rain_dates,
         )
         return output
 
