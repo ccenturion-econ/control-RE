@@ -409,8 +409,8 @@ def write_workbook(
     wb = Workbook()
     ws = wb.active
     month_name = SPANISH_MONTHS[rows[0].day.month]
-    ws.title = f"{month_name} {rows[0].day.year}"
-    summary = wb.create_sheet("Resumen semanal")
+    ws.title = f"Detalle {month_name} {rows[0].day.year}"
+    principal = wb.create_sheet("Vista principal", 0)
 
     title_fill = PatternFill("solid", fgColor="DDEAF7")
     panel_fill = PatternFill("solid", fgColor="F3F6F9")
@@ -581,11 +581,32 @@ def write_workbook(
         ws.column_dimensions[col].width = width
     ws.freeze_panes = f"A{first_data_row}"
 
-    summary.merge_cells("A1:G1")
-    summary["A1"] = "Resumen semanal de horas extra"
-    summary["A1"].font = title_font
-    summary["A1"].fill = title_fill
-    summary["A1"].alignment = Alignment(horizontal="center")
+    principal.merge_cells("A1:N1")
+    principal["A1"] = f"Horas extra - {month_name} {rows[0].day.year}"
+    principal["A1"].font = title_font
+    principal["A1"].fill = title_fill
+    principal["A1"].alignment = Alignment(horizontal="center")
+
+    for idx in range(3, 12):
+        principal.cell(idx, 1, ws.cell(idx, 1).value)
+        principal.cell(idx, 2, ws.cell(idx, 2).value)
+        principal.cell(idx, 1).font = Font(bold=True)
+        principal.cell(idx, 1).fill = panel_fill
+        principal.cell(idx, 2).fill = panel_fill
+        principal.cell(idx, 2).number_format = ws.cell(idx, 2).number_format
+    for idx in range(3, 10):
+        principal.cell(idx, 4, ws.cell(idx, 4).value)
+        principal.cell(idx, 5, f"='{ws.title}'!E{idx}")
+        principal.cell(idx, 4).font = Font(bold=True)
+        principal.cell(idx, 4).fill = good_fill
+        principal.cell(idx, 5).fill = good_fill
+        principal.cell(idx, 5).number_format = ws.cell(idx, 5).number_format
+
+    principal.merge_cells("H2:N2")
+    principal["H2"] = "Resumen semanal de horas extra"
+    principal["H2"].font = Font(color="17324D", bold=True, size=12)
+    principal["H2"].fill = title_fill
+    principal["H2"].alignment = Alignment(horizontal="center")
     summary_headers = [
         "Inicio de semana",
         "Horas extra reales",
@@ -595,34 +616,56 @@ def write_workbook(
         "Tope semanal sin usar",
         "Notas",
     ]
-    for col, header in enumerate(summary_headers, start=1):
-        cell = summary.cell(3, col, header)
+    for col, header in enumerate(summary_headers, start=8):
+        cell = principal.cell(3, col, header)
         cell.fill = header_fill
         cell.font = white_font
         cell.alignment = Alignment(horizontal="center", wrap_text=True)
     weeks = sorted({monday_of(row.day) for row in rows})
     for idx, week in enumerate(weeks, start=4):
-        summary.cell(idx, 1, week)
-        summary.cell(idx, 2, f'=SUMIFS(\'{ws.title}\'!$R${first_data_row}:$R${last_data_row},\'{ws.title}\'!$B${first_data_row}:$B${last_data_row},A{idx},\'{ws.title}\'!$D${first_data_row}:$D${last_data_row},"Real")')
-        summary.cell(idx, 3, f'=SUMIFS(\'{ws.title}\'!$R${first_data_row}:$R${last_data_row},\'{ws.title}\'!$B${first_data_row}:$B${last_data_row},A{idx},\'{ws.title}\'!$D${first_data_row}:$D${last_data_row},"Planificado")')
-        summary.cell(idx, 4, f"=SUM(B{idx}:C{idx})")
-        summary.cell(idx, 5, f"='{ws.title}'!$B$5")
-        summary.cell(idx, 6, f"=MAX(0,E{idx}-D{idx})")
-        summary.cell(idx, 7, f'=IF(D{idx}=0,"Sin registros",IF(F{idx}=0,"En tope semanal","Debajo del tope semanal"))')
-    for row in summary.iter_rows(min_row=3, max_row=3 + len(weeks), min_col=1, max_col=7):
+        principal.cell(idx, 8, week)
+        principal.cell(idx, 9, f'=SUMIFS(\'{ws.title}\'!$R${first_data_row}:$R${last_data_row},\'{ws.title}\'!$B${first_data_row}:$B${last_data_row},H{idx},\'{ws.title}\'!$D${first_data_row}:$D${last_data_row},"Real")')
+        principal.cell(idx, 10, f'=SUMIFS(\'{ws.title}\'!$R${first_data_row}:$R${last_data_row},\'{ws.title}\'!$B${first_data_row}:$B${last_data_row},H{idx},\'{ws.title}\'!$D${first_data_row}:$D${last_data_row},"Planificado")')
+        principal.cell(idx, 11, f"=SUM(I{idx}:J{idx})")
+        principal.cell(idx, 12, f"='{ws.title}'!$B$5")
+        principal.cell(idx, 13, f"=MAX(0,L{idx}-K{idx})")
+        principal.cell(idx, 14, f'=IF(K{idx}=0,"Sin registros",IF(M{idx}=0,"En tope semanal","Debajo del tope semanal"))')
+    for row in principal.iter_rows(min_row=3, max_row=3 + len(weeks), min_col=8, max_col=14):
         for cell in row:
             cell.border = border
             cell.alignment = Alignment(vertical="center", wrap_text=True)
-    for cell in summary.iter_cols(min_col=1, max_col=1, min_row=4, max_row=3 + len(weeks)):
+    for cell in principal.iter_cols(min_col=8, max_col=8, min_row=4, max_row=3 + len(weeks)):
         for item in cell:
             item.number_format = "mmm d, yyyy"
-    for cell in summary.iter_cols(min_col=2, max_col=6, min_row=4, max_row=3 + len(weeks)):
+    for cell in principal.iter_cols(min_col=9, max_col=13, min_row=4, max_row=3 + len(weeks)):
         for item in cell:
             item.number_format = "[h]:mm:ss"
-    for col in range(1, 8):
-        summary.column_dimensions[get_column_letter(col)].width = 18
-    summary.column_dimensions["G"].width = 22
-    summary.freeze_panes = "A4"
+
+    principal_source_columns = (1, 2, 3, 4, 5, 6, 7, 8, 19, 21)
+    for target_col, source_col in enumerate(principal_source_columns, start=1):
+        header = principal.cell(header_row, target_col, ws.cell(header_row, source_col).value)
+        header.fill = header_fill
+        header.font = white_font
+        header.alignment = Alignment(horizontal="center", vertical="center", wrap_text=True)
+        principal.column_dimensions[get_column_letter(target_col)].width = ws.column_dimensions[get_column_letter(source_col)].width
+        for row_idx in range(first_data_row, last_data_row + 1):
+            source_ref = f"'{ws.title}'!{get_column_letter(source_col)}{row_idx}"
+            principal.cell(row_idx, target_col, f'=IF({source_ref}="","",{source_ref})')
+            principal.cell(row_idx, target_col).number_format = ws.cell(row_idx, source_col).number_format
+            principal.cell(row_idx, target_col).border = border
+            principal.cell(row_idx, target_col).alignment = Alignment(vertical="center", wrap_text=True)
+    for cell in principal[last_data_row][:10]:
+        cell.fill = total_fill
+    for col in range(8, 15):
+        principal.column_dimensions[get_column_letter(col)].width = max(
+            principal.column_dimensions[get_column_letter(col)].width or 0, 18
+        )
+    principal.column_dimensions["N"].width = 22
+    principal.freeze_panes = f"A{first_data_row}"
+
+    wb.calculation.fullCalcOnLoad = True
+    wb.calculation.forceFullCalc = True
+    wb.calculation.calcMode = "auto"
 
     output_path.parent.mkdir(parents=True, exist_ok=True)
     wb.save(output_path)

@@ -18,6 +18,8 @@ Entrar a la seccion Releases del repositorio y descargar la version correspondie
    En `Fechas de lluvia`, se pueden ingresar varias fechas separadas por comas.
 5. Presionar `Generar Excel`.
 
+El Excel abre en `Vista principal`, con las columnas de uso habitual y el resumen semanal en la parte superior. La hoja `Detalle` conserva todos los cálculos, controles y columnas para revisión.
+
 ## Parametros principales
 
 - Hora oficial de entrada: hora desde la cual empieza a contar la jornada. Los minutos marcados antes de esta hora no suman para horas extra.
