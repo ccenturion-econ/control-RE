@@ -30,7 +30,7 @@ jobs:
 
       - name: Build app
         run: |
-          python -m PyInstaller -y --windowed --name GeneradorHorasExtra src/generador_horas_extra_app.py
+          python -m PyInstaller -y --windowed --name GeneradorHorasExtra --add-data "logo_conacom_2023_.png:." src/generador_horas_extra_app.py
           ditto -c -k --sequesterRsrc --keepParent dist/GeneradorHorasExtra.app GeneradorHorasExtra-mac-arm64.zip
 
       - name: Upload macOS artifact
@@ -62,7 +62,7 @@ jobs:
 
       - name: Build app
         run: |
-          python -m PyInstaller -y --windowed --name GeneradorHorasExtra src\generador_horas_extra_app.py
+          python -m PyInstaller -y --windowed --name GeneradorHorasExtra --add-data "logo_conacom_2023_.png;." src\generador_horas_extra_app.py
           Compress-Archive -Path dist\GeneradorHorasExtra -DestinationPath GeneradorHorasExtra-windows.zip
 
       - name: Upload Windows artifact

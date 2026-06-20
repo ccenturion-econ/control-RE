@@ -5,9 +5,12 @@ from __future__ import annotations
 
 import threading
 import tkinter as tk
+import sys
 from datetime import date
 from pathlib import Path
 from tkinter import filedialog, messagebox, ttk
+
+from PIL import Image, ImageTk
 
 from generate_billable_hours_from_pdf import (
     build_actual_days,
@@ -34,6 +37,13 @@ class HorasExtraApp(tk.Tk):
     SURFACE = "#FFFFFF"
     BACKGROUND = "#F3F6F8"
     TECH = "#17324D"
+
+    @staticmethod
+    def _resource_path(filename: str) -> Path:
+        bundle_dir = getattr(sys, "_MEIPASS", None)
+        if bundle_dir:
+            return Path(bundle_dir) / filename
+        return Path(__file__).resolve().parents[1] / filename
 
     def __init__(self) -> None:
         super().__init__()
@@ -147,15 +157,16 @@ class HorasExtraApp(tk.Tk):
             foreground=self.MUTED,
             font=("TkDefaultFont", 10),
         ).grid(row=1, column=0, sticky="w", pady=(4, 0))
-        tk.Label(
+        identity = tk.Canvas(
             header,
-            text="CONACOM  |  SISTEMA INTERNO",
+            width=280,
+            height=62,
             background=self.TECH,
-            foreground="#FFFFFF",
-            padx=14,
-            pady=7,
-            font=("TkDefaultFont", 9, "bold"),
-        ).grid(row=0, column=1, rowspan=2, sticky="e")
+            highlightthickness=0,
+            borderwidth=0,
+        )
+        identity.grid(row=0, column=1, rowspan=2, sticky="e")
+        self._add_identity_watermark(identity)
 
         outer = ttk.Frame(self, padding=(28, 22, 28, 18), style="App.TFrame")
         outer.grid(row=2, column=0, sticky="nsew")
@@ -198,7 +209,14 @@ class HorasExtraApp(tk.Tk):
         self._field(options, "Llegada tarde desde", self.late_starts_at, 2, 0, "Primer minuto tardío. Ejemplo: 08:16:00")
         self._field(options, "Salida anticipada antes de", self.early_exit_before, 2, 2, "Ejemplo: 16:00:00")
         self._field(options, "Entrada planificada", self.planned_entry, 3, 0, "Hora usada para proyectar días futuros.")
-        self._field(options, "Fechas de lluvia y tolerancia", self.rain_dates, 3, 2, "Fecha:minutos, separadas por comas. Ej.: 04/05/2026:30, 12/05/2026:45")
+        self._field(
+            options,
+            "Fechas de lluvia y tolerancia",
+            self.rain_dates,
+            3,
+            2,
+            "Cargue minutos adicionales. Ej.: 04/05/2026:30, 12/05/2026:45",
+        )
 
         footer = ttk.Frame(outer, style="App.TFrame")
         footer.grid(row=2, column=0, sticky="ew", pady=(18, 0))
@@ -209,6 +227,25 @@ class HorasExtraApp(tk.Tk):
             footer, text="GENERAR EXCEL", command=self.generate, style="Primary.TButton"
         )
         self.generate_button.grid(row=0, column=1, sticky="e")
+
+    def _add_identity_watermark(self, canvas: tk.Canvas) -> None:
+        logo_path = self._resource_path("logo_conacom_2023_.png")
+        if logo_path.exists():
+            logo = Image.open(logo_path).convert("RGB")
+            logo.thumbnail((260, 50), Image.Resampling.LANCZOS)
+            luminance = logo.convert("L")
+            alpha = luminance.point(lambda value: int((255 - value) * 0.16))
+            watermark = Image.new("RGBA", logo.size, "#FFFFFF")
+            watermark.putalpha(alpha)
+            self.identity_logo = ImageTk.PhotoImage(watermark)
+            canvas.create_image(140, 31, image=self.identity_logo)
+        canvas.create_text(
+            140,
+            31,
+            text="CONACOM  |  CAPITAL HUMANO",
+            fill="#FFFFFF",
+            font=("TkDefaultFont", 9, "bold"),
+        )
 
     def _field(
         self,

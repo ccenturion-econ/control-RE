@@ -26,7 +26,7 @@ El Excel abre en `Vista principal`, con las columnas de uso habitual y el resume
 - Llegada tarde desde: primer minuto que cuenta como llegada tarde.
 - Salida anticipada antes de: hora antes de la cual se registra uso de cupo por salida anticipada.
 - Entrada planificada: hora de entrada que se usa para proyectar dias futuros en meses parciales.
-- Fechas de lluvia y tolerancia: use `fecha:minutos`, separando cada día con comas. Acepta fechas `YYYY-MM-DD` y `DD/MM/YYYY`. Ejemplo: `04/05/2026:30, 12/05/2026:45`. Si se omiten los minutos, se aplican 30.
+- Fechas de lluvia y tolerancia: use `fecha:minutos adicionales`, separando cada día con comas. Acepta fechas `YYYY-MM-DD` y `DD/MM/YYYY`. Ejemplo: `04/05/2026:30, 12/05/2026:45`. Los minutos cargados se suman al umbral normal de llegada tarde; si se omiten, se aplican 30 adicionales.
 
 Los siguientes valores se muestran en el Excel generado; salvo el tope mensual, son fijos en la aplicacion:
 
