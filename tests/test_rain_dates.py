@@ -17,13 +17,17 @@ from generate_billable_hours_from_pdf import (  # noqa: E402
 class RainDatesTests(unittest.TestCase):
     def test_parses_both_supported_formats(self):
         self.assertEqual(
-            parse_rain_dates("2026-05-04, 12/05/2026"),
-            {date(2026, 5, 4), date(2026, 5, 12)},
+            parse_rain_dates("2026-05-04, 12/05/2026:45"),
+            {date(2026, 5, 4): 30, date(2026, 5, 12): 45},
         )
 
     def test_rejects_invalid_date_with_clear_message(self):
-        with self.assertRaisesRegex(ValueError, "Fechas de lluvia inválidas: 31/02/2026"):
+        with self.assertRaisesRegex(ValueError, "Fechas o tolerancias de lluvia inválidas: 31/02/2026"):
             parse_rain_dates("31/02/2026")
+
+    def test_rejects_tolerance_below_standard_minimum(self):
+        with self.assertRaisesRegex(ValueError, "tolerancia mínima es 30 minutos"):
+            parse_rain_dates("04/05/2026:29")
 
     def test_normal_and_rain_thresholds_preserve_billable_hours(self):
         days = [
@@ -33,12 +37,24 @@ class RainDatesTests(unittest.TestCase):
         ]
         billable, events = compute_billable_for_known_days(
             days, 8, 3, 8, 25, time(8, 0), time(8, 16), time(16, 0), 3,
-            {date(2026, 5, 5), date(2026, 5, 6)},
+            {date(2026, 5, 5): 30, date(2026, 5, 6): 30},
         )
         self.assertEqual(events[date(2026, 5, 4)], 1)
         self.assertEqual(events[date(2026, 5, 5)], 0)
         self.assertEqual(events[date(2026, 5, 6)], 1)
         self.assertGreater(billable[date(2026, 5, 5)], 0)
+
+    def test_each_rain_day_uses_its_own_extended_tolerance(self):
+        days = [
+            AttendanceDay(date(2026, 5, 11), time(9, 0), time(19, 0), "Real", ""),
+            AttendanceDay(date(2026, 5, 12), time(9, 1), time(19, 0), "Real", ""),
+        ]
+        _, events = compute_billable_for_known_days(
+            days, 8, 3, 8, 25, time(8, 0), time(8, 16), time(16, 0), 3,
+            {date(2026, 5, 11): 45, date(2026, 5, 12): 45},
+        )
+        self.assertEqual(events[date(2026, 5, 11)], 0)
+        self.assertEqual(events[date(2026, 5, 12)], 1)
 
     def test_rain_arrival_does_not_consume_quota_or_trigger_fourth_late_exclusion(self):
         days = [
@@ -53,7 +69,7 @@ class RainDatesTests(unittest.TestCase):
         )
         billable, events = compute_billable_for_known_days(
             days, 8, 3, 20, 25, time(8, 0), time(8, 16), time(16, 0), 3,
-            {date(2026, 5, 7)},
+            {date(2026, 5, 7): 30},
         )
         self.assertEqual(events[date(2026, 5, 7)], 0)
         self.assertGreater(billable[date(2026, 5, 7)], 0)
@@ -69,7 +85,7 @@ class RainDatesTests(unittest.TestCase):
             output = Path(temp_dir) / "horas_extra.xlsx"
             write_workbook(
                 rows, output, 25, 8, 8, 3, time(8, 0), time(8, 16),
-                time(16, 0), 3, set(),
+                time(16, 0), 3, {},
             )
             workbook = load_workbook(output, data_only=False)
 
@@ -89,6 +105,7 @@ class RainDatesTests(unittest.TestCase):
             ],
         )
         self.assertIn("'Detalle Mayo 2026'!S14", principal["I14"].value)
+        self.assertEqual(detail["V13"].value, "Tolerancia adicional por lluvia")
 
 
 if __name__ == "__main__":

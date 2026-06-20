@@ -73,39 +73,55 @@ def parse_date(value: str) -> date:
     return datetime.strptime(value, "%Y-%m-%d").date()
 
 
-def parse_rain_dates(value: str) -> set[date]:
-    """Convierte una lista separada por comas en fechas de lluvia."""
-    rain_dates: set[date] = set()
+def parse_rain_dates(value: str) -> dict[date, int]:
+    """Convierte fechas de lluvia y su tolerancia adicional en minutos."""
+    rain_dates: dict[date, int] = {}
     invalid: list[str] = []
     for raw_value in value.split(","):
         item = raw_value.strip()
         if not item:
             continue
+        date_value, separator, minutes_value = item.rpartition(":")
+        if not separator:
+            date_value = item
+            minutes_value = "30"
+        try:
+            tolerance_minutes = int(minutes_value.strip())
+        except ValueError:
+            invalid.append(item)
+            continue
+        if tolerance_minutes < 30:
+            invalid.append(item)
+            continue
         parsed = None
         for date_format in ("%Y-%m-%d", "%d/%m/%Y"):
             try:
-                parsed = datetime.strptime(item, date_format).date()
+                parsed = datetime.strptime(date_value.strip(), date_format).date()
                 break
             except ValueError:
                 continue
         if parsed is None:
             invalid.append(item)
         else:
-            rain_dates.add(parsed)
+            rain_dates[parsed] = tolerance_minutes
     if invalid:
         raise ValueError(
-            "Fechas de lluvia inválidas: "
+            "Fechas o tolerancias de lluvia inválidas: "
             + ", ".join(invalid)
-            + ". Use YYYY-MM-DD o DD/MM/YYYY, separadas por comas."
+            + ". Use fecha:minutos, por ejemplo 04/05/2026:30. "
+            + "La tolerancia mínima es 30 minutos."
         )
     return rain_dates
 
 
-def late_threshold(day: date, late_starts_at: time, rain_dates: set[date]) -> time:
-    """Devuelve el inicio de tardanza, sumando 30 minutos en días de lluvia."""
+def late_threshold(day: date, late_starts_at: time, rain_dates: dict[date, int]) -> time:
+    """Devuelve el inicio de tardanza con la tolerancia del día de lluvia."""
     if day not in rain_dates:
         return late_starts_at
-    return (datetime.combine(day, late_starts_at) + timedelta(minutes=30)).time()
+    return (
+        datetime.combine(day, late_starts_at)
+        + timedelta(minutes=rain_dates[day])
+    ).time()
 
 
 def excel_time(value: time | None) -> float | None:
@@ -210,9 +226,9 @@ def compute_billable_for_known_days(
     late_starts_at: time,
     early_exit_before: time,
     allowed_rule_events: int,
-    rain_dates: set[date] | None = None,
+    rain_dates: dict[date, int] | None = None,
 ) -> tuple[dict[date, float], dict[date, int]]:
-    rain_dates = rain_dates or set()
+    rain_dates = rain_dates or {}
     weekly_totals: dict[date, float] = defaultdict(float)
     monthly_total = 0.0
     late_total = 0
@@ -262,7 +278,7 @@ def distribute_planned_days(
     late_starts_at: time,
     early_exit_before: time,
     allowed_rule_events: int,
-    rain_dates: set[date] | None = None,
+    rain_dates: dict[date, int] | None = None,
 ) -> dict[date, AttendanceDay]:
     known_billable, _ = compute_billable_for_known_days(
         [day for day in actual_days if day.exit is not None],
@@ -339,7 +355,7 @@ def make_month_rows(
     late_starts_at: time,
     early_exit_before: time,
     allowed_rule_events: int,
-    rain_dates: set[date] | None = None,
+    rain_dates: dict[date, int] | None = None,
 ) -> list[AttendanceDay]:
     actual_by_date = {row.day: row for row in actual_days}
     incomplete_days = [row.day for row in actual_days if row.exit is None and row.entry]
@@ -403,9 +419,9 @@ def write_workbook(
     late_starts_at: time,
     early_exit_before: time,
     allowed_rule_events: int,
-    rain_dates: set[date] | None = None,
+    rain_dates: dict[date, int] | None = None,
 ) -> None:
-    rain_dates = rain_dates or set()
+    rain_dates = rain_dates or {}
     wb = Workbook()
     ws = wb.active
     month_name = SPANISH_MONTHS[rows[0].day.month]
@@ -421,7 +437,7 @@ def write_workbook(
     title_font = Font(color="17324D", bold=True, size=16)
     border = Border(bottom=Side(style="thin", color="CAD3DD"))
 
-    ws.merge_cells("A1:U1")
+    ws.merge_cells("A1:V1")
     ws["A1"] = f"Horas extra - {month_name} {rows[0].day.year}"
     ws["A1"].font = title_font
     ws["A1"].fill = title_fill
@@ -436,7 +452,7 @@ def write_workbook(
         ("Llegada tarde desde", late_starts_at),
         ("Salida anticipada antes de", early_exit_before),
         ("Usos de cupo permitidos", allowed_rule_events),
-        ("Tolerancia adicional por lluvia", timedelta(minutes=30)),
+        ("Tolerancia adicional estándar por lluvia", timedelta(minutes=30)),
     ]
     for idx, (label, value) in enumerate(assumptions, start=3):
         ws.cell(idx, 1, label)
@@ -496,6 +512,7 @@ def write_workbook(
         "Acumulado mensual",
         "Tope restante",
         "Notas",
+        "Tolerancia adicional por lluvia",
     ]
     for col, header in enumerate(headers, start=1):
         cell = ws.cell(header_row, col, header)
@@ -514,7 +531,7 @@ def write_workbook(
         ws.cell(offset, 7, f'=IF(OR(E{offset}="",F{offset}=""),0,MOD(FLOOR(F{offset}*1440,1)-MAX(FLOOR(E{offset}*1440,1),FLOOR($B$7*1440,1)),1440)/1440)')
         ws.cell(offset, 8, f"=MIN($B$6,MAX(0,G{offset}-$B$4))")
         ws.cell(offset, 9, "Sí" if row.day in rain_dates else "No")
-        ws.cell(offset, 10, f'=IF(AND(E{offset}<>"",E{offset}>=$B$8+IF(I{offset}="Sí",$B$11,0)),"Sí","No")')
+        ws.cell(offset, 10, f'=IF(AND(E{offset}<>"",E{offset}>=$B$8+IF(I{offset}="Sí",V{offset},0)),"Sí","No")')
         ws.cell(offset, 11, f'=IF(AND(F{offset}<>"",F{offset}<$B$9),"Sí","No")')
         ws.cell(offset, 12, f'=IF(J{offset}="Sí",1,0)+IF(K{offset}="Sí",1,0)')
         ws.cell(offset, 13, f"=SUM($L${first_data_row}:L{offset})")
@@ -530,8 +547,10 @@ def write_workbook(
         ws.cell(offset, 19, f"=SUM($R${first_data_row}:R{offset})")
         ws.cell(offset, 20, f"=MAX(0,$B$3-S{offset})")
         ws.cell(offset, 21, row.notes)
+        if row.day in rain_dates:
+            ws.cell(offset, 22, timedelta(minutes=rain_dates[row.day]))
 
-    for row in ws.iter_rows(min_row=header_row, max_row=last_data_row, min_col=1, max_col=21):
+    for row in ws.iter_rows(min_row=header_row, max_row=last_data_row, min_col=1, max_col=22):
         for cell in row:
             cell.border = border
             cell.alignment = Alignment(vertical="center", wrap_text=True)
@@ -543,7 +562,7 @@ def write_workbook(
         for cell in ws.iter_cols(min_col=col, max_col=col, min_row=first_data_row, max_row=last_data_row):
             for item in cell:
                 item.number_format = "hh:mm:ss"
-    for col in (7, 8, 16, 17, 18, 19, 20):
+    for col in (7, 8, 16, 17, 18, 19, 20, 22):
         for cell in ws.iter_cols(min_col=col, max_col=col, min_row=first_data_row, max_row=last_data_row):
             for item in cell:
                 item.number_format = "[h]:mm:ss"
@@ -576,6 +595,7 @@ def write_workbook(
         "S": 13,
         "T": 13,
         "U": 28,
+        "V": 20,
     }
     for col, width in widths.items():
         ws.column_dimensions[col].width = width
@@ -691,8 +711,11 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--rain-dates",
         type=parse_rain_dates,
-        default=set(),
-        help="Fechas de lluvia separadas por comas (YYYY-MM-DD o DD/MM/YYYY).",
+        default={},
+        help=(
+            "Fechas y tolerancias separadas por comas, en formato fecha:minutos. "
+            "Ejemplo: 04/05/2026:30,12/05/2026:45."
+        ),
     )
     parser.add_argument(
         "--as-of",

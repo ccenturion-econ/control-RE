@@ -89,7 +89,7 @@ class HorasExtraApp(tk.Tk):
         self._field(options, "Llegada tarde desde", self.late_starts_at, 2, 0, "Primer minuto tardío. Ejemplo: 08:16:00")
         self._field(options, "Salida anticipada antes de", self.early_exit_before, 2, 2, "Ejemplo: 16:00:00")
         self._field(options, "Entrada planificada", self.planned_entry, 3, 0, "Hora usada para proyectar días futuros.")
-        self._field(options, "Fechas de lluvia", self.rain_dates, 3, 2, "Día/mes/año, separadas por comas. Ej.: 04/05/2026, 12/05/2026")
+        self._field(options, "Fechas de lluvia y tolerancia", self.rain_dates, 3, 2, "Fecha:minutos, separadas por comas. Ej.: 04/05/2026:30, 12/05/2026:45")
 
         buttons = ttk.Frame(outer)
         buttons.grid(row=6, column=0, columnspan=3, sticky="ew", pady=(14, 8))
