@@ -26,12 +26,21 @@ class HorasExtraApp(tk.Tk):
     DAILY_CAP = 3.0
     REGULAR_HOURS = 8.0
     RULE_EVENTS_ALLOWED = 3
+    RED = "#D93632"
+    RED_DARK = "#B92724"
+    INK = "#1E293B"
+    MUTED = "#64748B"
+    LINE = "#DCE3EA"
+    SURFACE = "#FFFFFF"
+    BACKGROUND = "#F3F6F8"
+    TECH = "#17324D"
 
     def __init__(self) -> None:
         super().__init__()
         self.title("Generador de Horas Extra")
-        self.geometry("860x650")
-        self.minsize(780, 600)
+        self.geometry("940x720")
+        self.minsize(840, 660)
+        self.configure(background=self.BACKGROUND)
 
         self.pdf_path = tk.StringVar()
         self.output_path = tk.StringVar()
@@ -46,34 +55,134 @@ class HorasExtraApp(tk.Tk):
         self.planned_entry = tk.StringVar(value="08:10:04")
         self.rain_dates = tk.StringVar()
 
+        self._configure_styles()
         self._build_ui()
 
+    def _configure_styles(self) -> None:
+        style = ttk.Style(self)
+        if "clam" in style.theme_names():
+            style.theme_use("clam")
+
+        style.configure("App.TFrame", background=self.BACKGROUND)
+        style.configure("Surface.TFrame", background=self.SURFACE)
+        style.configure(
+            "Card.TLabelframe",
+            background=self.SURFACE,
+            bordercolor=self.LINE,
+            borderwidth=1,
+            relief="solid",
+        )
+        style.configure(
+            "Card.TLabelframe.Label",
+            background=self.SURFACE,
+            foreground=self.TECH,
+            font=("TkDefaultFont", 11, "bold"),
+            padding=(0, 0, 0, 6),
+        )
+        style.configure("Field.TLabel", background=self.SURFACE, foreground=self.INK)
+        style.configure(
+            "Help.TLabel",
+            background=self.SURFACE,
+            foreground=self.MUTED,
+            font=("TkDefaultFont", 9),
+        )
+        style.configure(
+            "Status.TLabel",
+            background=self.BACKGROUND,
+            foreground=self.TECH,
+            font=("TkDefaultFont", 10),
+        )
+        style.configure(
+            "Primary.TButton",
+            background=self.RED,
+            foreground="#FFFFFF",
+            bordercolor=self.RED,
+            font=("TkDefaultFont", 10, "bold"),
+            padding=(20, 10),
+        )
+        style.map(
+            "Primary.TButton",
+            background=[("pressed", self.RED_DARK), ("active", "#E14642"), ("disabled", "#D9A5A3")],
+            foreground=[("disabled", "#FFFFFF")],
+        )
+        style.configure(
+            "Secondary.TButton",
+            background="#F8FAFC",
+            foreground=self.TECH,
+            bordercolor="#BFCAD5",
+            padding=(14, 8),
+        )
+        style.map("Secondary.TButton", background=[("active", "#EAF0F5")])
+        style.configure(
+            "TEntry",
+            fieldbackground="#FFFFFF",
+            foreground=self.INK,
+            bordercolor="#BFCAD5",
+            lightcolor="#BFCAD5",
+            darkcolor="#BFCAD5",
+            padding=(8, 7),
+        )
+        style.map("TEntry", bordercolor=[("focus", self.RED)], lightcolor=[("focus", self.RED)])
+        style.configure("TCheckbutton", background=self.SURFACE, foreground=self.INK)
+        style.map("TCheckbutton", background=[("active", self.SURFACE)])
+
     def _build_ui(self) -> None:
-        outer = ttk.Frame(self, padding=18)
-        outer.grid(row=0, column=0, sticky="nsew")
+        accent = tk.Frame(self, background=self.RED, height=7)
+        accent.grid(row=0, column=0, sticky="ew")
+
+        header = tk.Frame(self, background=self.SURFACE, padx=28, pady=19)
+        header.grid(row=1, column=0, sticky="ew")
+        header.columnconfigure(0, weight=1)
+        tk.Label(
+            header,
+            text="GENERADOR DE HORAS EXTRA",
+            background=self.SURFACE,
+            foreground=self.INK,
+            font=("TkDefaultFont", 20, "bold"),
+        ).grid(row=0, column=0, sticky="w")
+        tk.Label(
+            header,
+            text="Gestión de asistencia  •  Herramienta institucional",
+            background=self.SURFACE,
+            foreground=self.MUTED,
+            font=("TkDefaultFont", 10),
+        ).grid(row=1, column=0, sticky="w", pady=(4, 0))
+        tk.Label(
+            header,
+            text="CONACOM  |  SISTEMA INTERNO",
+            background=self.TECH,
+            foreground="#FFFFFF",
+            padx=14,
+            pady=7,
+            font=("TkDefaultFont", 9, "bold"),
+        ).grid(row=0, column=1, rowspan=2, sticky="e")
+
+        outer = ttk.Frame(self, padding=(28, 22, 28, 18), style="App.TFrame")
+        outer.grid(row=2, column=0, sticky="nsew")
         self.columnconfigure(0, weight=1)
-        self.rowconfigure(0, weight=1)
-        outer.columnconfigure(1, weight=1)
+        self.rowconfigure(2, weight=1)
+        outer.columnconfigure(0, weight=1)
 
-        title = ttk.Label(outer, text="Generador de Horas Extra", font=("TkDefaultFont", 18, "bold"))
-        title.grid(row=0, column=0, columnspan=3, sticky="w", pady=(0, 18))
+        files = ttk.LabelFrame(outer, text="01  ARCHIVOS DEL PROCESO", padding=(18, 14), style="Card.TLabelframe")
+        files.grid(row=0, column=0, sticky="ew")
+        files.columnconfigure(1, weight=1)
 
-        ttk.Label(outer, text="PDF de asistencia").grid(row=1, column=0, sticky="w", pady=(6, 0))
-        ttk.Entry(outer, textvariable=self.pdf_path).grid(row=1, column=1, sticky="ew", padx=8)
-        ttk.Button(outer, text="Seleccionar", command=self.select_pdf).grid(row=1, column=2, sticky="ew")
-        ttk.Label(outer, text="Seleccione el reporte PDF exportado por el reloj marcador.", foreground="#607080").grid(
-            row=2, column=1, columnspan=2, sticky="w", padx=8, pady=(0, 6)
+        ttk.Label(files, text="PDF de asistencia", style="Field.TLabel").grid(row=0, column=0, sticky="w", pady=(4, 0))
+        ttk.Entry(files, textvariable=self.pdf_path).grid(row=0, column=1, sticky="ew", padx=12)
+        ttk.Button(files, text="Seleccionar PDF", command=self.select_pdf, style="Secondary.TButton").grid(row=0, column=2, sticky="ew")
+        ttk.Label(files, text="Reporte exportado por el reloj marcador.", style="Help.TLabel").grid(
+            row=1, column=1, columnspan=2, sticky="w", padx=12, pady=(2, 10)
         )
 
-        ttk.Label(outer, text="Archivo Excel de salida").grid(row=3, column=0, sticky="w", pady=(6, 0))
-        ttk.Entry(outer, textvariable=self.output_path).grid(row=3, column=1, sticky="ew", padx=8)
-        ttk.Button(outer, text="Guardar como", command=self.select_output).grid(row=3, column=2, sticky="ew")
-        ttk.Label(outer, text="Indique dónde guardar el archivo .xlsx generado.", foreground="#607080").grid(
-            row=4, column=1, columnspan=2, sticky="w", padx=8, pady=(0, 6)
+        ttk.Label(files, text="Excel de salida", style="Field.TLabel").grid(row=2, column=0, sticky="w", pady=(4, 0))
+        ttk.Entry(files, textvariable=self.output_path).grid(row=2, column=1, sticky="ew", padx=12)
+        ttk.Button(files, text="Guardar como", command=self.select_output, style="Secondary.TButton").grid(row=2, column=2, sticky="ew")
+        ttk.Label(files, text="Destino del archivo .xlsx con la vista principal y el detalle.", style="Help.TLabel").grid(
+            row=3, column=1, columnspan=2, sticky="w", padx=12, pady=(2, 4)
         )
 
-        options = ttk.LabelFrame(outer, text="Opciones", padding=12)
-        options.grid(row=5, column=0, columnspan=3, sticky="ew", pady=(14, 10))
+        options = ttk.LabelFrame(outer, text="02  PARÁMETROS DEL CÁLCULO", padding=(18, 14), style="Card.TLabelframe")
+        options.grid(row=1, column=0, sticky="ew", pady=(18, 0))
         for col in range(4):
             options.columnconfigure(col, weight=1)
 
@@ -81,7 +190,7 @@ class HorasExtraApp(tk.Tk):
         ttk.Checkbutton(options, text="No planificar días futuros", variable=self.no_plan).grid(
             row=0, column=2, columnspan=2, sticky="w", padx=8, pady=5
         )
-        ttk.Label(options, text="Desactive la proyección del resto del mes.", foreground="#607080").grid(
+        ttk.Label(options, text="Desactiva la proyección del resto del mes.", style="Help.TLabel").grid(
             row=1, column=2, columnspan=2, sticky="w", padx=8, pady=(0, 5)
         )
         self._field(options, "Tope mensual", self.monthly_cap, 1, 0, "Máximo mensual en horas. Ejemplo: 25")
@@ -91,14 +200,15 @@ class HorasExtraApp(tk.Tk):
         self._field(options, "Entrada planificada", self.planned_entry, 3, 0, "Hora usada para proyectar días futuros.")
         self._field(options, "Fechas de lluvia y tolerancia", self.rain_dates, 3, 2, "Fecha:minutos, separadas por comas. Ej.: 04/05/2026:30, 12/05/2026:45")
 
-        buttons = ttk.Frame(outer)
-        buttons.grid(row=6, column=0, columnspan=3, sticky="ew", pady=(14, 8))
-        buttons.columnconfigure(0, weight=1)
-        self.generate_button = ttk.Button(buttons, text="Generar Excel", command=self.generate)
+        footer = ttk.Frame(outer, style="App.TFrame")
+        footer.grid(row=2, column=0, sticky="ew", pady=(18, 0))
+        footer.columnconfigure(0, weight=1)
+        status = ttk.Label(footer, textvariable=self.status, style="Status.TLabel")
+        status.grid(row=0, column=0, sticky="w")
+        self.generate_button = ttk.Button(
+            footer, text="GENERAR EXCEL", command=self.generate, style="Primary.TButton"
+        )
         self.generate_button.grid(row=0, column=1, sticky="e")
-
-        status = ttk.Label(outer, textvariable=self.status, foreground="#17324D")
-        status.grid(row=7, column=0, columnspan=3, sticky="w", pady=(12, 0))
 
     def _field(
         self,
@@ -111,11 +221,11 @@ class HorasExtraApp(tk.Tk):
         state: str = "normal",
     ) -> None:
         grid_row = row * 2
-        ttk.Label(parent, text=label).grid(row=grid_row, column=col, sticky="w", padx=8, pady=(5, 0))
+        ttk.Label(parent, text=label, style="Field.TLabel").grid(row=grid_row, column=col, sticky="w", padx=8, pady=(5, 0))
         ttk.Entry(parent, textvariable=variable, width=16, state=state).grid(
             row=grid_row, column=col + 1, sticky="ew", padx=8, pady=(5, 0)
         )
-        ttk.Label(parent, text=help_text, foreground="#607080", wraplength=250).grid(
+        ttk.Label(parent, text=help_text, style="Help.TLabel", wraplength=270).grid(
             row=grid_row + 1, column=col, columnspan=2, sticky="w", padx=8, pady=(0, 5)
         )
 
